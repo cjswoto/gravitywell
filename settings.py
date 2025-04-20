@@ -1,11 +1,11 @@
 import json
 
-PLANET_RADIUS_RANGE = (10, 200)
-PLANET_DENSITY_RANGE = (1, 100)
-BULLET_RADIUS_RANGE = (2, 20)
+GV_RADIUS_RANGE    = (10, 200)
+GV_DENSITY_RANGE   = (1, 100)
+BULLET_RADIUS_RANGE= (2, 20)
 BULLET_DENSITY_RANGE = (1, 50)
-DRAG_SCALE_RANGE = (1, 100)
-FRICTION_RANGE = (0, 100)
+DRAG_SCALE_RANGE   = (1, 100)
+FRICTION_RANGE     = (0, 100)
 
 SETTINGS_FILE = "settings.json"
 GAME_SAVE_FILE = "savegame.json"
@@ -13,16 +13,16 @@ GAME_SAVE_FILE = "savegame.json"
 
 class Settings:
     def __init__(self):
-        self.planet_radius = 30
-        self.planet_density = 10
+        self.gv_radius     = 30
+        self.gv_density    = 10
         self.bullet_radius = 5
-        self.bullet_density = 1
-        self.drag_scale = 20
-        self.friction = 0
+        self.bullet_density= 1
+        self.drag_scale    = 20
+        self.friction      = 0
 
     @property
-    def planet_mass(self):
-        return self.planet_density * (self.planet_radius ** 2)
+    def gv_mass(self):
+        return self.gv_density * (self.gv_radius ** 2)
 
     @property
     def bullet_mass(self):
@@ -30,8 +30,8 @@ class Settings:
 
     def to_dict(self):
         return {
-            "planet_radius":  self.planet_radius,
-            "planet_density": self.planet_density,
+            "gv_radius":      self.gv_radius,
+            "gv_density":     self.gv_density,
             "bullet_radius":  self.bullet_radius,
             "bullet_density": self.bullet_density,
             "drag_scale":     self.drag_scale,
