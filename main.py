@@ -12,13 +12,13 @@ STATE_MENU     = "MENU"
 STATE_SETTINGS = "SETTINGS"
 STATE_SAVELOAD = "SAVELOAD"
 STATE_PLAY     = "PLAY"
-FPS = 60
+FPS            = 60
 
 pygame.init()
-screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
-WIDTH, HEIGHT = screen.get_size()
-CENTER = pygame.math.Vector2(WIDTH / 2, HEIGHT / 2)
-MAX_DISTANCE = max(WIDTH, HEIGHT) * 1.5
+screen       = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+WIDTH, HEIGHT= screen.get_size()
+CENTER       = pygame.math.Vector2(WIDTH/2, HEIGHT/2)
+MAX_DISTANCE = max(WIDTH, HEIGHT)*1.5
 
 clock = pygame.time.Clock()
 font  = pygame.font.SysFont(None, 36)
@@ -35,10 +35,7 @@ settings_items = [
 
 settings     = Settings()
 state        = STATE_MENU
-menu_idx     = 0
-save_idx     = 0
-settings_idx = 0
-
+menu_idx     = save_idx = settings_idx = 0
 bullets      = []
 total_score  = 0.0
 paused       = False
@@ -77,26 +74,24 @@ def load_game():
             rec["pos"],
             rec["vel"],
             rec["radius"],
-            rec.get("mass", settings.bullet_mass)
+            rec.get("mass", settings.bullet_mass),
+            settings.friction
         )
         b.arc_time = rec.get("arc_time", 0.0)
         bullets.append(b)
 
 
 while True:
-    dt = clock.tick(FPS) / 1000.0
+    dt = clock.tick(FPS)/1000.0
     mx, my = pygame.mouse.get_pos()
 
     for ev in pygame.event.get():
         if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-
-        # Toggle pause with P
         if state == STATE_PLAY and ev.type == pygame.KEYDOWN and ev.key == pygame.K_p:
             paused = not paused
 
-        # ──── MENU ─────────────────────────────────────────────────────────
         if state == STATE_MENU:
             if ev.type == pygame.MOUSEMOTION:
                 for i, it in enumerate(menu_items):
@@ -120,7 +115,7 @@ while True:
                     sys.exit()
             if ev.type == pygame.KEYDOWN:
                 if ev.key in (pygame.K_UP, pygame.K_DOWN):
-                    menu_idx = (menu_idx + (1 if ev.key == pygame.K_DOWN else -1)) % len(menu_items)
+                    menu_idx = (menu_idx + (1 if ev.key==pygame.K_DOWN else -1))%len(menu_items)
                 elif ev.key == pygame.K_RETURN:
                     c = menu_items[menu_idx]
                     if c == "Start Game":
@@ -139,7 +134,6 @@ while True:
                     state  = STATE_PLAY
                     paused = False
 
-        # ──── SETTINGS ───────────────────────────────────────────────────────
         elif state == STATE_SETTINGS:
             if ev.type == pygame.MOUSEMOTION:
                 for i, it in enumerate(settings_items):
@@ -163,26 +157,25 @@ while True:
                     text = f"{key}: {getattr(settings, key.lower().replace(' ', '_'))}"
                     r = font.render(text, True, (255,255,255)).get_rect(
                         topleft=(100, 150 + settings_idx*50))
-                    delta = -1 if mx < r.centerx else 1
+                    delta = -1 if mx<r.centerx else 1
                     attr = key.lower().replace(" ", "_")
-                    lo, hi = globals()[attr.upper() + "_RANGE"]
+                    lo, hi = globals()[attr.upper()+"_RANGE"]
                     setattr(settings, attr, max(lo, min(hi, getattr(settings, attr) + delta)))
             if ev.type == pygame.KEYDOWN:
                 if ev.key in (pygame.K_UP, pygame.K_DOWN):
-                    settings_idx = (settings_idx + (1 if ev.key == pygame.K_DOWN else -1)) % len(settings_items)
+                    settings_idx = (settings_idx + (1 if ev.key==pygame.K_DOWN else -1))%len(settings_items)
                 elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                     key = settings_items[settings_idx]
                     if key not in ("Save Settings","Load Settings","Back"):
                         attr = key.lower().replace(" ", "_")
-                        lo, hi = globals()[attr.upper() + "_RANGE"]
-                        change = -1 if ev.key == pygame.K_LEFT else 1
+                        lo, hi = globals()[attr.upper()+"_RANGE"]
+                        change = -1 if ev.key==pygame.K_LEFT else 1
                         setattr(settings, attr, max(lo, min(hi, getattr(settings, attr) + change)))
-                elif ev.key == pygame.K_RETURN and settings_items[settings_idx] == "Back":
+                elif ev.key == pygame.K_RETURN and settings_items[settings_idx]=="Back":
                     state = STATE_MENU
                 elif ev.key == pygame.K_ESCAPE:
                     state  = STATE_MENU
 
-        # ──── SAVE/LOAD ─────────────────────────────────────────────────────
         elif state == STATE_SAVELOAD:
             if ev.type == pygame.MOUSEMOTION:
                 for i, it in enumerate(save_items):
@@ -202,7 +195,7 @@ while True:
                     state = STATE_MENU
             if ev.type == pygame.KEYDOWN:
                 if ev.key in (pygame.K_UP, pygame.K_DOWN):
-                    save_idx = (save_idx + (1 if ev.key == pygame.K_DOWN else -1)) % len(save_items)
+                    save_idx = (save_idx + (1 if ev.key==pygame.K_DOWN else -1))%len(save_items)
                 elif ev.key == pygame.K_RETURN:
                     c = save_items[save_idx]
                     if c == "Save Game":
@@ -216,7 +209,6 @@ while True:
                 elif ev.key == pygame.K_ESCAPE:
                     state  = STATE_MENU
 
-        # ──── PLAY ───────────────────────────────────────────────────────────
         elif state == STATE_PLAY:
             if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
                 state  = STATE_MENU
@@ -233,7 +225,8 @@ while True:
                             drag_start,
                             vel,
                             settings.bullet_radius,
-                            settings.bullet_mass
+                            settings.bullet_mass,
+                            settings.friction
                         )
                     )
 
@@ -243,7 +236,6 @@ while True:
                 dt,
                 settings.planet_radius,
                 settings.planet_mass,
-                settings.friction,
                 CENTER,
                 MAX_DISTANCE,
                 bullets
@@ -257,9 +249,9 @@ while True:
 
     if state == STATE_MENU:
         for i, it in enumerate(menu_items):
-            color = (255,255,0) if i == menu_idx else (200,200,200)
+            color = (255,255,0) if i==menu_idx else (200,200,200)
             txt   = font.render(it, True, color)
-            screen.blit(txt, txt.get_rect(center=(CENTER.x, 200 + i*50)))
+            screen.blit(txt, txt.get_rect(center=(CENTER.x, 200+i*50)))
 
     elif state == STATE_SETTINGS:
         for i, it in enumerate(settings_items):
@@ -267,15 +259,15 @@ while True:
                 it if it in ("Save Settings","Load Settings","Back")
                 else f"{it}: {getattr(settings, it.lower().replace(' ', '_'))}"
             )
-            color = (255,255,0) if i == settings_idx else (200,200,200)
+            color = (255,255,0) if i==settings_idx else (200,200,200)
             txt   = font.render(text, True, color)
-            screen.blit(txt, txt.get_rect(topleft=(100, 150 + i*50)))
+            screen.blit(txt, txt.get_rect(topleft=(100, 150+i*50)))
 
     elif state == STATE_SAVELOAD:
         for i, it in enumerate(save_items):
-            color = (255,255,0) if i == save_idx else (200,200,200)
+            color = (255,255,0) if i==save_idx else (200,200,200)
             txt   = font.render(it, True, color)
-            screen.blit(txt, txt.get_rect(center=(CENTER.x, 200 + i*50)))
+            screen.blit(txt, txt.get_rect(center=(CENTER.x, 200+i*50)))
 
     elif state == STATE_PLAY:
         pygame.draw.circle(
@@ -287,9 +279,13 @@ while True:
             de   = pygame.mouse.get_pos()
             vel  = (drag_start - pygame.math.Vector2(de)) * (settings.drag_scale / 10)
             path = simulate_trajectory(
-                drag_start, vel,
-                settings.planet_radius, settings.planet_mass,
-                settings.friction, CENTER, MAX_DISTANCE
+                drag_start,
+                vel,
+                settings.planet_radius,
+                settings.planet_mass,
+                settings.friction,
+                CENTER,
+                MAX_DISTANCE
             )
             if len(path) > 1:
                 pygame.draw.lines(screen, (100,255,100), False, path, 2)
