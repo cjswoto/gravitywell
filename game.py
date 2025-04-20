@@ -1,7 +1,10 @@
-import pygame, math
+# game.py
+
+import pygame
 
 G = 1
 gravity_indicators = True
+show_head_tail    = True
 
 class Projectile:
     def __init__(self, pos, vel, radius, mass, friction):
@@ -13,22 +16,25 @@ class Projectile:
         self.active              = True
         self.arc_time            = 0.0
         self.last_acc_components = []
+        self.distance            = 0.0
 
     def update(self, dt, gv_radius, gv_mass, center, max_dist, others):
         if not self.active:
             return
         self.arc_time += dt
+
         to_center = center - self.pos
-        r_center = to_center.length()
+        r_center  = to_center.length()
+        self.distance = r_center
+
         if r_center <= gv_radius + self.radius or r_center > max_dist:
             self.active = False
             return
 
         comps = []
-        # gravity well pull
         central = to_center.normalize() * (G * gv_mass / (r_center * r_center))
         comps.append(central)
-        # mutual pulls
+
         for other in others:
             if other is self or not other.active:
                 continue
@@ -39,6 +45,7 @@ class Projectile:
             comps.append(d.normalize() * (G * other.mass / r2))
 
         self.last_acc_components = comps
+
         total_acc = pygame.math.Vector2(0, 0)
         for a in comps:
             total_acc += a
@@ -48,6 +55,7 @@ class Projectile:
         self.pos += self.vel * dt
 
     def draw(self, surf, color):
+        # draw gravity indicator vectors
         if gravity_indicators:
             for acc in self.last_acc_components:
                 if acc.length() == 0:
@@ -65,6 +73,22 @@ class Projectile:
                 ]
                 pygame.draw.polygon(surf, (0,255,0), pts)
 
+        # draw head & tail indicating direction of travel
+        if show_head_tail and self.vel.length() > 0:
+            dirn = self.vel.normalize()
+            tail = self.pos - dirn * (self.radius * 2)
+            head = self.pos + dirn * (self.radius * 2)
+            pygame.draw.line(surf, (255,255,0), tail, head, 2)
+            # arrowhead at head
+            perp = dirn.rotate(90) * 5
+            pts = [
+                (head.x, head.y),
+                (head.x - dirn.x*5 + perp.x, head.y - dirn.y*5 + perp.y),
+                (head.x - dirn.x*5 - perp.x, head.y - dirn.y*5 - perp.y)
+            ]
+            pygame.draw.polygon(surf, (255,255,0), pts)
+
+        # draw the projectile itself
         pygame.draw.circle(
             surf,
             color,
@@ -72,14 +96,13 @@ class Projectile:
             self.radius
         )
 
-
 def simulate_trajectory(start, vel, gv_radius, gv_mass, fr, center, max_dist, steps=200, dt=1/60.0):
     pos = pygame.math.Vector2(start)
     v   = pygame.math.Vector2(vel)
     path = []
     for _ in range(steps):
         to_center = center - pos
-        r_center = to_center.length()
+        r_center  = to_center.length()
         if r_center <= gv_radius or r_center > max_dist:
             break
         v += to_center.normalize() * (G * gv_mass / (r_center * r_center)) * dt

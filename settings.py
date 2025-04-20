@@ -1,24 +1,25 @@
+# settings.py
+
 import json
 
-GV_RADIUS_RANGE    = (10, 200)
-GV_DENSITY_RANGE   = (1, 100)
-BULLET_RADIUS_RANGE= (2, 20)
-BULLET_DENSITY_RANGE = (1, 50)
-DRAG_SCALE_RANGE   = (1, 100)
-FRICTION_RANGE     = (0, 100)
+GV_RADIUS_RANGE     = (10, 200)
+GV_DENSITY_RANGE    = (1, 100)
+BULLET_RADIUS_RANGE = (2, 20)
+BULLET_DENSITY_RANGE= (1, 50)
+DRAG_SCALE_RANGE    = (1, 100)
+FRICTION_RANGE      = (0, 100)
 
 SETTINGS_FILE = "settings.json"
 GAME_SAVE_FILE = "savegame.json"
 
-
 class Settings:
     def __init__(self):
-        self.gv_radius     = 30
-        self.gv_density    = 10
-        self.bullet_radius = 5
-        self.bullet_density= 1
-        self.drag_scale    = 20
-        self.friction      = 0
+        self.gv_radius      = 30
+        self.gv_density     = 10
+        self.bullet_radius  = 5
+        self.bullet_density = 1
+        self.drag_scale     = 20
+        self.friction       = 0
 
     @property
     def gv_mass(self):
