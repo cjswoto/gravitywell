@@ -1,8 +1,8 @@
 {
-  "planet_radius": 30,
-  "planet_density": 55,
-  "bullet_radius": 2,
-  "bullet_density": 1,
-  "drag_scale": 1,
-  "friction": 0
+  "planet_radius": 31,
+  "planet_density": 65,
+  "bullet_radius": 20,
+  "bullet_density": 13,
+  "drag_scale": 10,
+  "friction": 1
 }
