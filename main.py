@@ -4,6 +4,7 @@ import sys
 import json
 import pygame
 import game
+import about
 from settings import (
     Settings,
     GV_RADIUS_RANGE, GV_DENSITY_RANGE,
@@ -29,7 +30,7 @@ clock = pygame.time.Clock()
 font  = pygame.font.SysFont(None, 36)
 small = pygame.font.SysFont(None, 24)
 
-menu_items       = ["Start Game", "Settings", "Save/Load", "Quit"]
+menu_items       = ["Start Game", "About", "Settings", "Save/Load", "Quit"]
 save_items       = ["Save Game", "Load Game", "Back"]
 settings_options = [
     ("GV Radius",      "gv_radius"),
@@ -54,6 +55,13 @@ drag_start      = pygame.math.Vector2(0, 0)
 in_game_menu    = False
 selected_bullet = None
 
+# hold‑to‑repeat support for in‑game +/- buttons
+hold_attr          = None
+hold_sign          = 0
+hold_timer         = 0.0
+HOLD_DELAY_INITIAL = 0.5
+HOLD_DELAY_REPEAT  = 0.1
+
 gv_min  = GV_DENSITY_RANGE[0] * (GV_RADIUS_RANGE[0]**2)
 gv_max  = GV_DENSITY_RANGE[1] * (GV_RADIUS_RANGE[1]**2)
 bul_min = BULLET_DENSITY_RANGE[0] * (BULLET_RADIUS_RANGE[0]**2)
@@ -72,6 +80,9 @@ def mass_to_color(m, mn, mx):
 
 def to_screen(wp):
     return (wp - CENTER) * zoom + CENTER
+
+def screen_to_world(sp):
+    return (sp - CENTER) / zoom + CENTER
 
 def save_game():
     data = {
@@ -112,22 +123,34 @@ while True:
     dt = clock.tick(FPS) / 1000.0
     mx, my = pygame.mouse.get_pos()
 
+    # handle hold‑to‑repeat for in‑game +/- buttons
+    if in_game_menu and hold_attr:
+        if pygame.mouse.get_pressed()[0]:
+            hold_timer += dt
+            delay = HOLD_DELAY_INITIAL if hold_timer < HOLD_DELAY_INITIAL else HOLD_DELAY_REPEAT
+            if hold_timer >= delay:
+                cur = getattr(settings, hold_attr)
+                lo, hi = globals()[hold_attr.upper() + "_RANGE"]
+                setattr(settings, hold_attr, max(lo, min(hi, cur + hold_sign)))
+                hold_timer -= delay
+        else:
+            hold_attr = None
+
     for ev in pygame.event.get():
         if ev.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
         # Zoom controls
-        if state == STATE_PLAY:
-            if ev.type == pygame.KEYDOWN:
-                if ev.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
-                    zoom = min(3.0, zoom + ZOOM_STEP)
-                elif ev.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
-                    zoom = max(0.2, zoom - ZOOM_STEP)
-                game.camera_zoom = zoom
-            elif ev.type == pygame.MOUSEWHEEL:
-                zoom = max(0.2, min(3.0, zoom + ev.y * ZOOM_STEP))
-                game.camera_zoom = zoom
+        if state == STATE_PLAY and ev.type == pygame.KEYDOWN:
+            if ev.key in (pygame.K_EQUALS, pygame.K_KP_PLUS):
+                zoom = min(3.0, zoom + ZOOM_STEP)
+            elif ev.key in (pygame.K_MINUS, pygame.K_KP_MINUS):
+                zoom = max(0.2, zoom - ZOOM_STEP)
+            game.camera_zoom = zoom
+        elif state == STATE_PLAY and ev.type == pygame.MOUSEWHEEL:
+            zoom = max(0.2, min(3.0, zoom + ev.y * ZOOM_STEP))
+            game.camera_zoom = zoom
 
         # Play‑state toggles
         if state == STATE_PLAY and ev.type == pygame.KEYDOWN:
@@ -145,12 +168,14 @@ while True:
             if ev.type == pygame.MOUSEMOTION:
                 for i, it in enumerate(menu_items):
                     surf = font.render(it, True, (255,255,255))
-                    if surf.get_rect(center=(CENTER.x, 200+i*50)).collidepoint(mx, my):
+                    if surf.get_rect(center=(CENTER.x,200+i*50)).collidepoint(mx,my):
                         menu_idx = i
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 c = menu_items[menu_idx]
                 if c == "Start Game":
                     state = STATE_PLAY; bullets.clear(); total_score = 0.0; paused = False
+                elif c == "About":
+                    about.run_about(screen)
                 elif c == "Settings":
                     state = STATE_SETTINGS
                 elif c == "Save/Load":
@@ -164,6 +189,8 @@ while True:
                     c = menu_items[menu_idx]
                     if c == "Start Game":
                         state = STATE_PLAY; bullets.clear(); total_score = 0.0; paused = False
+                    elif c == "About":
+                        about.run_about(screen)
                     elif c == "Settings":
                         state = STATE_SETTINGS
                     elif c == "Save/Load":
@@ -171,9 +198,7 @@ while True:
                     elif c == "Quit":
                         pygame.quit(); sys.exit()
                 elif ev.key == pygame.K_ESCAPE:
-                    # Return to play instead of quitting
-                    state = STATE_PLAY
-                    paused = False
+                    state = STATE_PLAY; paused = False
 
         # Settings screen
         elif state == STATE_SETTINGS:
@@ -181,7 +206,7 @@ while True:
                 for i,(disp,attr) in enumerate(settings_options):
                     text = disp if attr is None else f"{disp}: {getattr(settings,attr)}"
                     surf = font.render(text, True, (255,255,255))
-                    if surf.get_rect(topleft=(100,150+i*50)).collidepoint(mx, my):
+                    if surf.get_rect(topleft=(100,150+i*50)).collidepoint(mx,my):
                         settings_idx = i
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 disp, attr = settings_options[settings_idx]
@@ -193,59 +218,60 @@ while True:
                     elif disp=="Load Settings":
                         settings.load()
                 else:
-                    cur = getattr(settings, attr)
+                    cur = getattr(settings,attr)
                     surf = font.render(f"{disp}: {cur}", True, (255,255,255))
                     r = surf.get_rect(topleft=(100,150+settings_idx*50))
-                    delta = -1 if mx < r.centerx else 1
-                    lo, hi = globals()[attr.upper()+"_RANGE"]
-                    setattr(settings, attr, max(lo, min(hi, cur+delta)))
+                    delta = -1 if mx<r.centerx else 1
+                    lo,hi = globals()[attr.upper()+"_RANGE"]
+                    setattr(settings,attr,max(lo,min(hi,cur+delta)))
             if ev.type == pygame.KEYDOWN:
                 if ev.key in (pygame.K_UP, pygame.K_DOWN):
                     settings_idx = (settings_idx + (1 if ev.key==pygame.K_DOWN else -1)) % len(settings_options)
                 elif ev.key in (pygame.K_LEFT, pygame.K_RIGHT):
                     disp, attr = settings_options[settings_idx]
                     if attr:
-                        cur = getattr(settings, attr)
+                        cur = getattr(settings,attr)
                         delta = -1 if ev.key==pygame.K_LEFT else 1
-                        lo, hi = globals()[attr.upper()+"_RANGE"]
-                        setattr(settings, attr, max(lo, min(hi, cur+delta)))
-                elif ev.key == pygame.K_RETURN and settings_options[settings_idx][0]=="Back":
+                        lo,hi = globals()[attr.upper()+"_RANGE"]
+                        setattr(settings,attr,max(lo,min(hi,cur+delta)))
+                elif ev.key==pygame.K_RETURN and settings_options[settings_idx][0]=="Back":
                     state = STATE_MENU
-                elif ev.key == pygame.K_ESCAPE:
+                elif ev.key==pygame.K_ESCAPE:
                     state = STATE_MENU
 
         # Save/Load screen
         elif state == STATE_SAVELOAD:
             if ev.type == pygame.MOUSEMOTION:
-                for i, it in enumerate(save_items):
+                for i,it in enumerate(save_items):
                     surf = font.render(it, True, (255,255,255))
-                    if surf.get_rect(center=(CENTER.x,200+i*50)).collidepoint(mx, my):
+                    if surf.get_rect(center=(CENTER.x,200+i*50)).collidepoint(mx,my):
                         save_idx = i
             if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
                 c = save_items[save_idx]
-                if c == "Save Game":
+                if c=="Save Game":
                     save_game()
-                elif c == "Load Game":
+                elif c=="Load Game":
                     load_game(); state = STATE_PLAY; paused = False
-                elif c == "Back":
+                elif c=="Back":
                     state = STATE_MENU
             if ev.type == pygame.KEYDOWN:
                 if ev.key in (pygame.K_UP, pygame.K_DOWN):
                     save_idx = (save_idx + (1 if ev.key==pygame.K_DOWN else -1)) % len(save_items)
                 elif ev.key == pygame.K_RETURN:
                     c = save_items[save_idx]
-                    if c == "Save Game":
+                    if c=="Save Game":
                         save_game()
-                    elif c == "Load Game":
+                    elif c=="Load Game":
                         load_game(); state = STATE_PLAY; paused = False
-                    elif c == "Back":
+                    elif c=="Back":
                         state = STATE_MENU
-                elif ev.key == pygame.K_ESCAPE:
+                elif ev.key==pygame.K_ESCAPE:
                     state = STATE_MENU
 
         # Play state
         elif state == STATE_PLAY:
-            if ev.type == pygame.KEYDOWN and ev.key == pygame.K_ESCAPE:
+            # ESC behavior
+            if ev.type==pygame.KEYDOWN and ev.key==pygame.K_ESCAPE:
                 if in_game_menu:
                     in_game_menu = False
                 else:
@@ -253,34 +279,58 @@ while True:
                     state = STATE_MENU
                     paused = False
 
-            if in_game_menu and ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            # in‑game settings +/- click
+            if in_game_menu and ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1:
                 for i,(disp,attr) in enumerate(settings_options):
                     if attr is None: continue
                     y = 60 + i*40
-                    if pygame.Rect(60,y,30,30).collidepoint(ev.pos):
-                        lo, hi = globals()[attr.upper()+"_RANGE"]
-                        setattr(settings, attr, max(lo, getattr(settings,attr)-1))
-                    elif pygame.Rect(310,y,30,30).collidepoint(ev.pos):
-                        lo, hi = globals()[attr.upper()+"_RANGE"]
-                        setattr(settings, attr, min(hi, getattr(settings,attr)+1))
+                    minus = pygame.Rect(60, y, 30, 30)
+                    plus  = pygame.Rect(310, y, 30, 30)
+                    if minus.collidepoint(ev.pos):
+                        lo,hi = globals()[attr.upper()+"_RANGE"]
+                        setattr(settings,attr,max(lo,getattr(settings,attr)-1))
+                        hold_attr,hold_sign,hold_timer = attr,-1,0.0
+                    elif plus.collidepoint(ev.pos):
+                        lo,hi = globals()[attr.upper()+"_RANGE"]
+                        setattr(settings,attr,min(hi,getattr(settings,attr)+1))
+                        hold_attr,hold_sign,hold_timer = attr,1,0.0
                 continue
+            if ev.type==pygame.MOUSEBUTTONUP and ev.button==1:
+                hold_attr = None
 
-            if ev.type == pygame.MOUSEBUTTONUP and ev.button == 3:
-                click = pygame.math.Vector2(ev.pos)
+            # right‑click select
+            if ev.type==pygame.MOUSEBUTTONUP and ev.button==3:
+                click_world = screen_to_world(pygame.math.Vector2(ev.pos))
                 selected_bullet = None
                 for b in bullets:
-                    if (b.pos - click).length() <= b.radius*2:
+                    if (b.pos-click_world).length() <= b.radius*2:
                         selected_bullet = b
                         break
 
+            # adjust speed via +/- buttons w/out spawning
+            if ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1 and selected_bullet:
+                minus_rect = pygame.Rect(180, 90, 20, 20)
+                plus_rect  = pygame.Rect(210, 90, 20, 20)
+                if minus_rect.collidepoint(ev.pos):
+                    mag = selected_bullet.vel.length()
+                    mag = max(0.0, mag - 0.1)
+                    selected_bullet.vel = selected_bullet.vel.normalize() * mag
+                    continue
+                elif plus_rect.collidepoint(ev.pos):
+                    mag = selected_bullet.vel.length()
+                    mag += 0.1
+                    selected_bullet.vel = selected_bullet.vel.normalize() * mag
+                    continue
+
+            # left‑click spawn
             if not paused:
-                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                if ev.type==pygame.MOUSEBUTTONDOWN and ev.button==1:
                     dragging   = True
-                    drag_start = pygame.math.Vector2(ev.pos)
-                if ev.type == pygame.MOUSEBUTTONUP and ev.button == 1 and dragging:
+                    drag_start = screen_to_world(pygame.math.Vector2(ev.pos))
+                if ev.type==pygame.MOUSEBUTTONUP and ev.button==1 and dragging:
                     dragging = False
-                    drag_end = pygame.math.Vector2(ev.pos)
-                    vel      = (drag_start - drag_end) * (settings.drag_scale/10)
+                    drag_end = screen_to_world(pygame.math.Vector2(ev.pos))
+                    vel = (drag_start - drag_end) * (settings.drag_scale / 10)
                     bullets.append(Projectile(
                         drag_start, vel,
                         settings.bullet_radius,
@@ -288,7 +338,8 @@ while True:
                         settings.friction
                     ))
 
-    if state == STATE_PLAY and not paused:
+    # physics update
+    if state==STATE_PLAY and not paused:
         for b in bullets[:]:
             b.update(
                 dt,
@@ -296,52 +347,56 @@ while True:
                 CENTER, MAX_DISTANCE,
                 bullets
             )
-            if b.active and b.arc_time > 20:
+            if b.active and b.arc_time>20:
                 total_score += dt
             if not b.active:
                 bullets.remove(b)
 
+    # drawing
     screen.fill((0,0,0))
 
-    if state == STATE_PLAY:
-        # draw gravity well
+    if state==STATE_PLAY:
+        # draw GV object
         gv_color = mass_to_color(settings.gv_mass, gv_min, gv_max)
         center_s = to_screen(CENTER)
-        pygame.draw.circle(
-            screen, gv_color,
-            (int(center_s.x), int(center_s.y)),
-            int(settings.gv_radius * zoom)
-        )
+        pygame.draw.circle(screen, gv_color,
+                           (int(center_s.x), int(center_s.y)),
+                           int(settings.gv_radius * zoom))
 
         # trajectory preview
         if not paused and dragging:
-            de  = pygame.mouse.get_pos()
-            vel = (drag_start - pygame.math.Vector2(de)) * (settings.drag_scale/10)
+            de_screen = pygame.mouse.get_pos()
+            de_world  = screen_to_world(pygame.math.Vector2(de_screen))
+            vel = (drag_start - de_world) * (settings.drag_scale / 10)
             path = simulate_trajectory(
                 drag_start, vel,
-                settings.gv_radius, settings.gv_mass,
-                settings.friction, CENTER, MAX_DISTANCE
+                settings.gv_radius + settings.bullet_radius,
+                settings.gv_mass,
+                settings.friction,
+                CENTER,
+                MAX_DISTANCE
             )
-            if len(path) > 1:
+            if len(path)>1:
                 pts = [to_screen(pygame.math.Vector2(p)) for p in path]
-                pygame.draw.lines(screen, (100,255,100), False, pts, max(1,int(2*zoom)))
-            pygame.draw.line(
-                screen, (200,200,200),
-                to_screen(drag_start),
-                to_screen(pygame.math.Vector2(de)),
-                max(1,int(2*zoom))
-            )
+                pygame.draw.lines(screen,(100,255,100),False,pts,max(1,int(2*zoom)))
+            pygame.draw.line(screen,(200,200,200),
+                             to_screen(drag_start),
+                             to_screen(de_world),
+                             max(1,int(2*zoom)))
 
+        # draw bullets
         for b in bullets:
             col = mass_to_color(b.mass, bul_min, bul_max)
-            b.draw(screen, col)
+            b.draw(screen,col)
 
-        screen.blit(font.render(f"Score: {int(total_score)}", True, (255,255,255)), (10,10))
-        screen.blit(small.render(f"Objects: {len(bullets)}", True, (255,255,255)), (10,40))
+        # HUD
+        screen.blit(font.render(f"Score: {int(total_score)}",True,(255,255,255)),(10,10))
+        screen.blit(small.render(f"Objects: {len(bullets)}",True,(255,255,255)),(10,40))
         if bullets:
             oldest = max(b.arc_time for b in bullets)
-            screen.blit(small.render(f"Oldest: {oldest:.1f}s", True, (255,255,255)), (10,65))
+            screen.blit(small.render(f"Oldest: {oldest:.1f}s",True,(255,255,255)),(10,65))
 
+        # selected bullet info + speed +/- buttons
         if selected_bullet:
             info = [
                 f"Pos:   {selected_bullet.pos.x:.1f},{selected_bullet.pos.y:.1f}",
@@ -351,41 +406,48 @@ while True:
                 f"Mass:  {selected_bullet.mass:.1f}",
                 f"Fric:  {selected_bullet.friction:.1f}%"
             ]
-            for i, line in enumerate(info):
-                screen.blit(small.render(line, True, (255,255,0)), (10,90+i*20))
+            for i,line in enumerate(info):
+                screen.blit(small.render(line,True,(255,255,0)),(10,90+i*20))
+            minus_r = pygame.Rect(180,90,20,20)
+            plus_r  = pygame.Rect(210,90,20,20)
+            pygame.draw.rect(screen,(180,180,180),minus_r)
+            screen.blit(small.render("-",True,(0,0,0)),(minus_r.x+4, minus_r.y))
+            pygame.draw.rect(screen,(180,180,180),plus_r)
+            screen.blit(small.render("+",True,(0,0,0)),(plus_r.x+4, plus_r.y))
 
+        # in‑game settings overlay
         if in_game_menu:
-            overlay = pygame.Surface((380, len(settings_options)*40 + 40), pygame.SRCALPHA)
+            overlay = pygame.Surface((380, len(settings_options)*40+40), pygame.SRCALPHA)
             overlay.fill((0,0,0,200))
-            screen.blit(overlay, (50,50))
-            for i, (disp, attr) in enumerate(settings_options):
+            screen.blit(overlay,(50,50))
+            for i,(disp,attr) in enumerate(settings_options):
                 y = 60 + i*40
-                text = disp if attr is None else f"{disp}: {getattr(settings, attr)}"
+                text = disp if attr is None else f"{disp}: {getattr(settings,attr)}"
                 color = (255,255,0) if i==settings_idx else (200,200,200)
-                screen.blit(font.render(text, True, color), (100, y))
+                screen.blit(font.render(text,True,color),(100,y))
                 if attr:
-                    pygame.draw.rect(screen, (180,180,180), (60, y, 30, 30))
-                    screen.blit(small.render("-", True, (0,0,0)), (68, y+2))
-                    pygame.draw.rect(screen, (180,180,180), (310, y, 30, 30))
-                    screen.blit(small.render("+", True, (0,0,0)), (318, y+2))
+                    pygame.draw.rect(screen,(180,180,180),(60,y,30,30))
+                    screen.blit(small.render("-",True,(0,0,0)),(68,y+2))
+                    pygame.draw.rect(screen,(180,180,180),(310,y,30,30))
+                    screen.blit(small.render("+",True,(0,0,0)),(318,y+2))
 
-    elif state == STATE_MENU:
-        for i, it in enumerate(menu_items):
+    elif state==STATE_MENU:
+        for i,it in enumerate(menu_items):
             color = (255,255,0) if i==menu_idx else (200,200,200)
-            surf  = font.render(it, True, color)
-            screen.blit(surf, surf.get_rect(center=(CENTER.x,200+i*50)))
+            surf = font.render(it,True,color)
+            screen.blit(surf,surf.get_rect(center=(CENTER.x,200+i*50)))
 
-    elif state == STATE_SETTINGS:
+    elif state==STATE_SETTINGS:
         for i,(disp,attr) in enumerate(settings_options):
-            text  = disp if attr is None else f"{disp}: {getattr(settings, attr)}"
+            text  = disp if attr is None else f"{disp}: {getattr(settings,attr)}"
             color = (255,255,0) if i==settings_idx else (200,200,200)
-            surf  = font.render(text, True, color)
-            screen.blit(surf, surf.get_rect(topleft=(100,150+i*50)))
+            surf  = font.render(text,True,color)
+            screen.blit(surf,surf.get_rect(topleft=(100,150+i*50)))
 
-    elif state == STATE_SAVELOAD:
-        for i, it in enumerate(save_items):
+    elif state==STATE_SAVELOAD:
+        for i,it in enumerate(save_items):
             color = (255,255,0) if i==save_idx else (200,200,200)
-            surf  = font.render(it, True, color)
-            screen.blit(surf, surf.get_rect(center=(CENTER.x,200+i*50)))
+            surf  = font.render(it,True,color)
+            screen.blit(surf,surf.get_rect(center=(CENTER.x,200+i*50)))
 
     pygame.display.flip()
